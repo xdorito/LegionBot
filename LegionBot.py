@@ -1,24 +1,24 @@
-﻿import discord
+﻿import pickle
+import random
+from datetime import datetime
+
+
+import database_sqlite
+import candidate as cand
+import config
+import utils as util
+
+import discord
 from discord.ext import commands
-from discord.utils import get
 from discord.ext import tasks
 from discord import app_commands
-import pickle
-import asyncio
-import database_sqlite
-import random
-from datetime import datetime, time
-import candidate as cand
-import json
-import os
-from zoneinfo import ZoneInfo
-import time
 
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
 
-bot = commands.Bot(command_prefix = '$', intents=intents)
+bot = commands.Bot(config.BOT_PREFIX, intents=intents)
+bot.config = config
 
 def load_pickle_files():
     global project_list
@@ -43,302 +43,24 @@ def load_pickle_files():
 db = database_sqlite.DatabaseSqlite()
 db.setup_db()
 
-def save_state(data, filename = 'state.json'):
-    with open(filename, 'w') as f:
-        json.dump(data, f)
-
-def load_state(filename = 'state.json'):
-    try:
-        with open(filename, 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-
-LEGION_ID = None
-ADVERTIZER_ROLE = None
-TICKET_ROLE = None
-STATE = None
-ANNOY_TIME = time(hour = 0, minute = 0, second = 0, tzinfo=ZoneInfo("America/Chicago"))
-project_list = None
-votes = None
-candidates = None
-SENATOR_ROLE = 1311824922301038632
-ADMINISTRATOR_ROLE = 1371792303206699040
-
-GUILD_ID = discord.Object(id=1267584422253694996)
-DISCIPLINARY_ROLES = [1367304039137542155, 1367304098659176641]
-#Prob 1, Prob 2
 
 @bot.event
 async def on_ready():
     print(f"We have logged in as {bot.user}")
-    global LEGION_ID
-    global ADVERTIZER_ROLE
-    global TICKET_ROLE
-    global STATE
-    LEGION_ID = bot.get_guild(1267584422253694996)
-    ADVERTIZER_ROLE = LEGION_ID.get_role(1360478811661144114)
-    TICKET_ROLE = LEGION_ID.get_role(1324782094571798621)
-    STATE = load_state()
-    legion_advert.start()
-    ticket_remind.start()
-    load_pickle_files()
+    # TODO load cogs
+
     #ping_metronome.start()
-
-
-@bot.event
-async def on_guild_channel_create(channel):
-    if "ticket" in channel.name.lower():
-        await asyncio.sleep(5)
-        await channel.send("""
-                           Hello! Welcome to the Legion Discord Server! Please answer these questions to help us get this started!
-        1) Have you read and agree to the ⁠rules?
-        2) Are you over 18?
-        3) Are you planning on joining the Legion, are a member of one of its Allies, or are just here to Visit?
-        4) What is your username in Bitcraft?
-        5) Are you currently a member of any other group?
-        6) What is your primary (and secondary if applicable) language?
-        7) What made you interested in joining The Legion? Were you invited by anyone?
-
-                           """)
-
-@bot.event
-async def on_member_join(member):
-    await asyncio.sleep(30)
-    await member.send("""
-    Hello! Thank you for joining the discord server for The Legion, our group for Bitcraft Online.
-    Please make sure you head to this message in the welcome channel and click the button to create a ticket.
-    This will allow you to access the rest of the server.
-    https://discordapp.com/channels/1267584422253694996/1317666800896577638/1317673462495711322
-    """)
-    print(f"Pinged {member.name} with join info")
-
-@bot.tree.command(name = "request_list", description = "Get a list of open requests")
-async def request_list(interaction: discord.Interaction):
-    await interaction.response.send_message("Fetching Requests...", ephemeral = True)
-    output = "```"
-    namePadding = 0
-    requestPadding = 0
-    claimantPadding = 0
-
-    data = await db.get_requests(int(interaction.guild.id))
-    for r in data:
-        if r.claimant_id == None:
-            claim_name = "Unclaimed"
-        else:
-            claim_name = interaction.guild.get_member(r.claimant_id).display_name
-        user_name = interaction.guild.get_member(r.requestor_id).display_name
-        resource = r.resource[0:40]
-        namePadding = max(namePadding, len(user_name))
-        requestPadding = max(requestPadding, len(resource))
-        claimantPadding = max(claimantPadding, len(claim_name))
-
-    namePadding += 4
-    requestPadding += 4
-    claimantPadding += 4
-    count = 0
-
-    for r in data:
-        if r.claimant_id == None:
-            claim_name = "Unclaimed"
-        else:
-            claim_name = interaction.guild.get_member(r.claimant_id).display_name
-        if len(r.resource) > 40:
-            resource = r.resource[0:40]
-            resource += "..."
-        else:
-            resource = r.resource
-        user_name = interaction.guild.get_member(r.requestor_id).display_name
-        output += f"\n {user_name: <{namePadding}} - {resource: <{requestPadding}} - {claim_name: <{claimantPadding}} - {r.id}"
-        count += 1
-
-        if count % 10 == 0:
-            output += "```"
-            await interaction.followup.send(output)
-            output = "```"
-        elif count == len(data):
-            output += "```"
-            await interaction.followup.send(output)
-
-@bot.tree.command(name = "request", description = "Request a resource")
-async def request(interaction: discord.Interaction, resource: str):
-    id = await db.insert_request(interaction.guild_id, interaction.user.id, resource)
-    await interaction.response.send_message(f"""
-    Requester: {interaction.user.mention}
-    Resource: {resource}
-    ID: {id}
-    """, ephemeral = True)
-
-@bot.tree.command(name = "claim", description = "Claim a resource request")
-async def claim(interaction: discord.Interaction, id: int):
-    currentRequest = await db.claim_request(id, interaction.guild_id, interaction.user.id)
-
-    if currentRequest == None:
-        await interaction.response.send_message("That ID didn't work, please double check it!", ephemeral = True)
-        return
-
-    await interaction.response.send_message(f"""
-    <@{currentRequest.requestor_id}>
-        Claimant: {interaction.user.display_name.capitalize()}
-        Resource: {currentRequest.resource}
-        ID: {id}
-    """)
-
-@bot.tree.command(name = "unclaim", description = "Unclaim a request")
-async def unclaim(interaction: discord.Interaction, id: int):
-    currentRequest = await db.unclaim_request(id, interaction.guild_id, interaction.user.id)
-
-    if currentRequest == None:
-        await interaction.response.send_message("That ID didn't work, please double check it!", ephemeral = True)
-        return
-
-    interaction.response.send_message(f"You have successfully unclaimed {currentRequest.resource} ({id})", ephemeral=True)
-
-@bot.tree.command(name = "complete", description = "Complete a request")
-async def complete(interaction: discord.Interaction, id: int):
-    currentRequest = await db.finish_request(id, interaction.guild_id, interaction.user.id)
-
-    if currentRequest == None:
-        await interaction.response.send_message("That ID didn't work, please double check it!", ephemeral = True)
-        return
-
-    await interaction.response.send_message(f"""
-    <@{currentRequest.requestor_id}>
-        Completer: {interaction.user.display_name.capitalize()}
-        Resource: {currentRequest.resource}
-        ID: {id}
-    """)
-
-@bot.tree.command(name = "claims", description = "See which requests you've claimed")
-async def claims(interaction: discord.Interaction):
-    data = await db.get_claims(interaction.guild_id, interaction.user.id)
-    out = ''
-
-    for d in data:
-        user_name = interaction.guild.get_member(d.requestor_id).display_name
-        out += f" {d.id} - {user_name.capitalize()} - {d.resource}\n"
-    await interaction.response.send_message(f"{interaction.user.display_name}'s requests: \n {out}", ephemeral = True)
-
-@bot.tree.command(name = "requests", description = "See a list of requests you've made")
-async def requests(interaction: discord.Interaction):
-    data = await db.get_user_requests(interaction.guild_id, interaction.user.id)
-    out = ''
-    for d in data:
-        out += f" {d.id} - {interaction.user.display_name.capitalize()} - {d.resource}\n"
-    await interaction.response.send_message(f"Your requests:\n {out}", ephemeral = True)
-
-@bot.tree.command(name = "new_project", description = "Create a new project")
-async def new_project(interaction: discord.Interaction, name: str):
-    data = await db.new_project(interaction.guild_id, name, time.time())
-
-    if data == None:
-        await interaction.response.send_message("Something went wrong and your project didn't get made... idk how. Contact Lanidae I guess")
-    else:
-        await interaction.response.send_message(f"Your project has been created! Your project's name is {name} and its id is {data}")
-
-@bot.tree.command(name = "add_resource", description = "Add a resource to the project")
-async def add_resource(interaction: discord.Interaction, resource: str, amount: int, project: int):
-    await db.add_resource(resource, amount, project, interaction.guild_id)
-    await interaction.response.send_message(f"You have added the resource: {amount} - {resource} to project: {project}")
-
-@bot.tree.command(name = "remove_resource", description = "Remove a resource from a project")
-async def remove_resource(interaction: discord.Interaction, resource: str, project: int):
-    await db.remove_resource(resource, project, interaction.guild_id)
-    await interaction.response.send_message(f"You have removed {resource} from project: {project}")
-
-@bot.tree.command(name = "list_projects", description = "Display a list of active project")
-async def list_projects(interaction: discord.Interaction):
-    await interaction.response.send_message("Fetching Project List...", ephemeral=True)
-    data = await db.list_projects(interaction.guild_id)
-    output = "```"
-    count = 0
-    for p in data:
-        output += f"\n {p[0].title()} - {p[1]}"
-        count += 1
-        if count % 20 == 0:
-            output += "```"
-            await interaction.followup.send(output)
-            output = "```"
-        elif count == len(data):
-            output += "```"
-            await interaction.followup.send(output)
-
-@bot.tree.command(name = "get_contributors", description = "Get a list of people who have contributed to this project")
-async def get_contributors(interaction: discord.Interaction, project: int):
-    await interaction.response.send_message("Fetching Contributors...", ephemeral=True)
-    data = await db.list_contributors(project, interaction.guild_id)
-    output = "```"
-    count = 0
-    for c in data:
-        output += f"\n{interaction.guild.get_member(c[0]).display_name}"
-        count += 1
-        if count % 20 == 0:
-            output += "```"
-            await interaction.followup.send(output)
-            output = "```"
-        elif count == len(data):
-            output += "```"
-            await interaction.followup.send(output)
-
-@bot.tree.command(name = "get_contributions", description = "Get a list of what resources members have been contributed to this project")
-async def get_contributions(interaction: discord.Interaction, project: int):
-    await interaction.response.send_message("Fetching Contributions...", ephemeral=True)
-    data = await db.list_contributions(project, interaction.guild_id)
-    output = "```"
-    count = 0
-    lastid = None
-    for c in data:
-        if lastid != c[0] or count % 20 == 0:
-            lastid = c[0]
-            output += f"\n{interaction.guild.get_member(c[0]).display_name}"
-            count += 1
-        output += f"\n\t{c[1]} - {c[2]}"
-        count += 1
-        if count % 20 == 0:
-            output += "```"
-            await interaction.followup.send(output)
-            output = "```"
-        elif count >= len(data):
-            output += "```"
-            await interaction.followup.send(output)
-
-@bot.tree.command(name = "get_resources", description = "Get a list of what resources are in this project")
-async def get_resources(interaction: discord.Interaction, project: int):
-    await interaction.response.send_message("Fetching Resources...", ephemeral=True)
-    data = await db.list_resources(project, interaction.guild_id)
-    output = "```"
-    count = 0
-    for r in data:
-        output += f"\n{r[0] : <16} - {r[1] : >7} / {r[2] : >7}"
-        count += 1
-        if count % 20 == 0:
-            output += "```"
-            await interaction.followup.send(output)
-            output = "```"
-        elif count == len(data):
-            output += "```"
-            await interaction.followup.send(output)
-
-@bot.tree.command(name = "contribute", description = "Record your contributions to a project")
-async def contribute(interaction: discord.Interaction, project: int, resource: str, amount: int):
-    await db.contribute_resources(project, resource, amount, interaction.user.id, interaction.guild_id)
-    await interaction.response.send_message(f"Thank you for your contribution! You contributed {amount} - {resource} to project: {project}", ephemeral = True)
-
-@bot.tree.command(name = "finish_project", description = "Finish a project, good job!")
-async def finishProject(interaction: discord.Interaction, project: int):
-    name = await db.complete_project(project, interaction.guild_id)
-    await interaction.response.send_message(f"You've marked project {name} - {project} as complete!")
 
 @tasks.loop(minutes=67)
 async def legion_advert():
-    global STATE
     if int(datetime.now().timestamp()) - STATE['LAST_ANNOUNCE'] < 57600:
         return
-    STATE['LAST_ANNOUNCE'] = int(datetime.now().timestamp())
-    save_state(STATE)
-    humans = [m for m in LEGION_ID.members if (not m.bot and (ADVERTIZER_ROLE in m.roles))]
+    # STATE['LAST_ANNOUNCE'] = int(datetime.now().timestamp())
+    # util.save_state(STATE)
+    # TODO state based pings
+    humans = [m for m in config.GUILD_ID.members if (not m.bot and (config.ADVERTISER_ROLE_ID in m.roles))]
     pinged = random.choice(humans)
-    await pinged.send("Hello! You've been chosen to advertize for Legion this time! Please make sure to post something unique/fun in the Legion's Looking For Group post in the main bitcraft server!")
+    await pinged.send("Hello! You've been chosen to advertise for Legion this time! Please make sure to post something unique/fun in the Legion's Looking For Group post in the main bitcraft server!")
     print(f"Pinged {pinged.name} to advertise.")
 
 @tasks.loop(minutes = 1)
@@ -346,9 +68,9 @@ async def ping_metronome():
     h = bot.get_user(201804073886941185)
     await h.send("HI METRONOME WE LOVE YOU")
 
-@tasks.loop(time=ANNOY_TIME)
+@tasks.loop(time=config.ANNOY_TIME)
 async def ticket_remind():
-    humans = [m for m in LEGION_ID.members if (not m.bot and (TICKET_ROLE in m.roles))]
+    humans = [m for m in config.GUILD_ID.members if (not m.bot and (TICKET_ROLE in m.roles))]
     for h in humans:
         date_check = datetime.now().replace(tzinfo=ZoneInfo("America/Chicago")) - h.joined_at.replace(tzinfo=ZoneInfo("America/Chicago"))
         if date_check.days > 7:
@@ -368,230 +90,6 @@ async def ticket_remind():
                      \n Thank you for your cooperation :)
                      """)
         print(f"Pinged {h.name} to make a ticket.")
-
-@bot.command()
-async def synccmd(ctx: commands.Context):
-    fmt = await bot.tree.sync(guild = GUILD_ID)
-    await ctx.send(
-        f"Synced {len(fmt)} commands to the current server",
-        delete_after=1.0
-    )
-    await ctx.message.delete()
-
-@bot.command()
-async def globalsync(ctx: commands.Context):
-    fmt = await bot.tree.sync()
-    await ctx.send(
-        f"Synced {len(fmt)} commands globally",
-        delete_after = 5.0
-    )
-    await ctx.message.delete()
-
-@bot.tree.command(name="candidate", description="Declare yourself as a candidate for Senate.", guild=GUILD_ID)
-@app_commands.checks.has_role(1268739778119995505)
-async def candidate(interaction: discord.Interaction):
-    # Check for ongoing election
-    if not STATE['ELECTION_STARTED']:
-        await interaction.response.send_message("There's no election running right now. Please wait for an election to declare your candidacy.", ephemeral=True)
-        return
-
-    # Check for disciplinary marks
-    for r in DISCIPLINARY_ROLES:
-        if interaction.guild.get_role(r) in interaction.user.roles:
-            await interaction.response.send_message("Sorry, you have a disciplinary mark, only members in good standing can be Senators.", ephemeral=True)
-            return
-
-    # Check user join date
-    data = await db.get_user(interaction.user.id)
-    date_check = datetime.now().replace(tzinfo=None) - datetime.fromtimestamp(data[2])
-    print(date_check.days)
-    if date_check.days < 30:
-        await interaction.response.send_message("You haven't been here long enough! You need to have been in the guild for at least one month to be a Senator!", ephemeral=True)
-        return
-
-    # Check if new candidate declarations are allowed
-    if not STATE['CANDIDATES_ALLOWED']:
-        await interaction.response.send_message("Sorry, the period to declare your candidacy has ended. You'll have to try again next election", ephemeral=True)
-        return
-
-    # Check if user is already a candidate
-    for c in candidates:
-        if c.name == interaction.user.name:
-            await interaction.response.send_message("It looks like you're already a candidate, no need to put yourself in twice!", ephemeral=True)
-            return
-
-    max_id = 0
-    for x in candidates:
-        if x.cid > max_id:
-            max_id = x.cid
-    max_id += 1
-    c = cand.Candidate(interaction.user.name, interaction.user.id, max_id)
-    candidates.append(c)
-    await interaction.response.send_message(f"""
-    Thank you for submitting your candidacy for the Legion Senate, your details are as follows:
-    Name: {c.name}
-    Candidate ID: {c.cid}
-    """, ephemeral = True)
-    pickle.dump(candidates, open("candidates.p", "wb"))
-
-
-@bot.tree.command(name="start_election", description="Start an election!", guild = GUILD_ID)
-@app_commands.checks.has_role(1311825324308303913)
-async def start_election(interaction: discord.Interaction):
-    global STATE
-    STATE['ELECTION_STARTED'] = True
-    STATE['CANDIDATES_ALLOWED'] = True
-    save_state(STATE)
-    await interaction.response.send_message("You've started an election!", ephemeral=True)
-
-@bot.tree.command(name="start_voting", description = "Start voting", guild = GUILD_ID)
-@app_commands.checks.has_role(1311825324308303913)
-async def start_voting(interaction: discord.Interaction):
-    global STATE
-    STATE['CANDIDATES_ALLOWED'] = False
-    save_state(STATE)
-    await interaction.response.send_message("Stopped candidates from declaring so voting can start.", ephemeral = True)
-
-@bot.tree.command(name="withdraw", description="Withdraw yourself as a candidate", guild=GUILD_ID)
-@app_commands.checks.has_role(1268739778119995505)
-async def withdraw(interaction: discord.Interaction):
-    for c in candidates:
-        if c.uid == interaction.member.id:
-            candidates.remove(c)
-            pickle.dump(candidates, open("candidates.p", "wb"))
-            await interaction.response.send_message("You have removed yourself as a candidate", ephemeral = True)
-            return
-
-@bot.tree.command(name = "vote", description="Vote for a candidate!", guild = GUILD_ID)
-@app_commands.checks.has_role(1268739778119995505)
-async def vote(interaction: discord.Interaction, cid: int):
-    for c in candidates:
-        if c.cid == cid:
-            c.Vote(interaction.user.id)
-            await interaction.response.send_message(f"Thank you for voting for {c.name}", ephemeral=True)
-            pickle.dump(candidates, open("candidates.p", "wb"))
-            return
-
-@bot.tree.command(name = "remove_vote", description = "Remove your vote for a candidate", guild = GUILD_ID)
-@app_commands.checks.has_role(1268739778119995505)
-async def remove_vote(interaction: discord.Interaction, cid: int):
-    for c in candidates:
-        if c.cid == cid:
-            c.RemoveVote(interaction.user.id)
-            await interaction.response.send_message(f"You have successfully remove your vote for {c.name}", ephemeral=True)
-            pickle.dump(candidates, open("candidates.p", "wb"))
-            return
-
-@bot.tree.command(name = "list_candidates", description = "List all candidates for the election", guild = GUILD_ID)
-@app_commands.checks.has_role(1268739778119995505)
-async def list_candidates(interaction: discord.Interaction):
-    output = ""
-    for c in candidates:
-        output += f'{c.name} - {c.cid}\n'
-    await interaction.response.send_message(output, ephemeral=True)
-
-
-@bot.tree.command(name = "end_election", description = "End a senate election", guild = GUILD_ID)
-@app_commands.checks.has_role(1311825324308303913)
-async def end_election(interaction: discord.Interaction, senator_count: int):
-    global STATE
-    STATE['ELECTION_STARTED'] = False
-    save_state(STATE)
-    sorted_candidates = sorted(candidates, key = lambda x: x.votes, reverse=True)
-    output = ""
-
-    senate = interaction.guild.get_role(SENATOR_ROLE)
-    administrator = interaction.guild.get_role(ADMINISTRATOR_ROLE)
-
-    for m in interaction.guild.members:
-        try:
-            await m.remove_roles(senate, "Election Prep")
-            await m.remove_roles(administrator, "Election Prep")
-        except:
-            print("Removing senate and admin roles broke")
-
-    if len(sorted_candidates) <= senator_count:
-        for c in sorted_candidates:
-            output += f'{c.name} - ({c.cid}) - Votes: {c.votes}\n'
-            m = interaction.guild.get_member(c.uid)
-            try:
-                await m.add_roles(senate, "Won Election")
-            except:
-                print("Adding senate roles broke")
-    else:
-        count = 1
-        for c in sorted_candidates:
-            if count <= senator_count:
-                output += f'{c.name} - ({c.cid}) - Votes: {c.votes}\n'
-                m = interaction.guild.get_member(c.uid)
-                try:
-                    await m.add_roles(senate, "Won Election")
-                except:
-                    print("Adding senate roles broke")
-    await interaction.response.send_message(output, ephemeral=True)
-    current_directory = os.getcwd()
-    os.remove(f'{current_directory}\\candidates.p')
-
-profession_roles = {
-    "foraging": 1267585190981796021,
-    "hunting": 1267585359986823168,
-    "mining": 1267585386859728927,
-    "forestry": 1267585920773918752,
-    "carpentry": 1267585436885323817,
-    "leatherworking": 1267585503385882665,
-    "masonry": 1267585535858315306,
-    "smithing": 1267585569442238556,
-    "tailoring": 1267585594750402581,
-    "scholar": 1267585753496551627,
-    "farming": 1267585784404377763,
-    "fishing": 1267585808186081311
-}
-
-@bot.tree.command(name = "count_professions", description = "Display a count of member professions", guild = GUILD_ID)
-async def count_professions(interaction: discord.Interaction):
-    await interaction.response.send_message("Getting profession counts", ephemeral=True)
-    output = '```'
-    rcount = 0
-    for k, v in profession_roles.items():
-        count = 0
-        rcount += 1
-        role = interaction.guild.get_role(v)
-        output += f"{k.title():14} -"
-        for m in role.members:
-            if interaction.guild.get_role(1268739778119995505) in m.roles:
-                output += f" {m.display_name},"
-                count += 1
-        output = output[:-1]
-        output += f" - ({count})\n\n"
-        if rcount %4 == 0:
-            output += "```"
-            await interaction.followup.send(output)
-            output = "```"
-        elif rcount == len(profession_roles):
-            output += "```"
-            await interaction.followup.send(output)
-    return
-
-@bot.tree.command(name = "add_member", description = "Add a member as part of Legion", guild = GUILD_ID)
-@app_commands.checks.has_role(1311824922301038632)
-async def add_member(interaction: discord.Interaction, user: discord.Member):
-    data = await db.new_user(user.id, user.joined_at.timestamp(), datetime.now().timestamp())
-    output = f"Name: {interaction.guild.get_member(data[0]).display_name} - Join Date: <t:{int(data[1])}> - Member Date: <t:{int(data[2])}>"
-    await interaction.response.send_message(output, ephemeral = True)
-
-@bot.tree.command(name = "remove_member", description = "Remove a member as part of Legion", guild = GUILD_ID)
-@app_commands.checks.has_role(1311824922301038632)
-async def remove_member(interaction: discord.Interaction, user: discord.Member):
-    data = await db.remove_user(user.id)
-    output = f"Name: {interaction.guild.get_member(data[0]).display_name} - Join Date: <t:{int(data[1])}> - Member Date: <t:{int(data[2])}>"
-    await interaction.response.send_message(output, ephemeral = True)
-
-@bot.tree.command(name = "get_member", description = "Get user data", guild = GUILD_ID)
-@app_commands.checks.has_role(1311824922301038632)
-async def get_member(interaction: discord.Interaction, user: discord.Member):
-    data = await db.remove_user(user.id)
-    output = f"Name: {interaction.guild.get_member(data[0]).display_name} - Join Date: <t:{int(data[1])}> - Member Date: <t:{int(data[2])}>"
-    await interaction.response.send_message(output, ephemeral = True)
 
 @bot.tree.error
 async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:

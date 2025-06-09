@@ -1,7 +1,8 @@
 ﻿import os
 import database_sqlite
-from tasks import BotTasks
-from state_manager import BotStateManager
+from managers.roles_manager import BotRolesManager
+from managers.task_manager import BotTasksManager
+from managers.state_manager import BotStateManager
 import config
 import discord
 from discord.ext import commands
@@ -14,6 +15,7 @@ intents.message_content = True
 bot = commands.Bot(config.BOT_PREFIX, intents=intents)
 bot.config = config
 bot.state_manager = BotStateManager()
+bot.roles_manager = BotRolesManager(bot.config)
 
 db = database_sqlite.DatabaseSqlite()
 db.setup_db()
@@ -33,7 +35,7 @@ async def on_ready():
                 print(f"Failed to load cog {filename}: {e}")
 
     # Initialize bot tasks
-    bot_tasks = BotTasks(bot)
+    bot_tasks = BotTasksManager(bot)
     bot_tasks.ticket_remind.start()
     bot_tasks.legion_advert.start()
 
@@ -48,7 +50,4 @@ async def on_error(interaction: discord.Interaction, error: discord.app_commands
         return
     await interaction.followup.send(f"The bot has thrown the following error: {error}. Please contact Lanidae and send a screenshot of this message.", ephemeral=True)
 
-with open('secrets', 'r') as sf:
-    token = sf.readline().strip()
-
-bot.run(token)
+bot.run(config.DISCORD_TOKEN)

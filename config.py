@@ -4,14 +4,19 @@ from datetime import time
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
-# lets use dotenv to load environment variables
-# and a role manager to return dev or prod roles
 load_dotenv()
 CURRENT_ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 
-DISCORD_TOKEN = os.getenv('BOT_TOKEN')
+def get_token_from_secrets():
+    try:
+        with open('secrets', 'r') as sf:
+            return sf.readline().strip()
+    except FileNotFoundError:
+        return None
 
-DEVELOPEMENT = {
+DISCORD_TOKEN = os.getenv('BOT_TOKEN') or get_token_from_secrets()
+
+DEVELOPMENT = {
     "GUILD": {
         "id": 1267584422253694996,
         "object": discord.Object(id=1267584422253694996, type=discord.Guild),
@@ -20,7 +25,7 @@ DEVELOPEMENT = {
         "id": 1268739778119995505,
         "name": "Legionnaire"
     },
-    "SENETOR": {
+    "SENATOR": {
         "id": 1311824922301038632,
         "name": "Senator"
     },
@@ -40,7 +45,7 @@ DEVELOPEMENT = {
         "ids": [1367304039137542155, 1367304098659176641],
         "names": ["Bonked", "Pecunaria"]  # idk what these actually are
     },
-    "PROFFESIONS": {
+    "PROFESSIONS": {
         "foraging": {
             "name": "Foraging",
             "id": 1267585190981796021
@@ -100,7 +105,7 @@ PRODUCTION = {
         "id": 1268739778119995505,
         "name": "Legionnaire"
     },
-    "SENETOR": {
+    "SENATOR": {
         "id": 1311824922301038632,
         "name": "Senator"
     },
@@ -120,7 +125,7 @@ PRODUCTION = {
         "ids": [1367304039137542155, 1367304098659176641],
         "names": ["Bonked", "Pecunaria"]  # idk what these actually are
     },
-    "PROFFESIONS": {
+    "PROFESSIONS": {
         "foraging": {
             "name": "Foraging",
             "id": 1267585190981796021
@@ -177,3 +182,10 @@ ANNOY_TIME = time(hour=0, minute=0, second=0, tzinfo=ZoneInfo("America/Chicago")
 
 # Bot settings
 BOT_PREFIX = '$'
+
+if CURRENT_ENVIRONMENT == 'production':
+    ROLES = PRODUCTION
+else:
+    ROLES = DEVELOPMENT
+
+print(f"Loaded config for {CURRENT_ENVIRONMENT}")

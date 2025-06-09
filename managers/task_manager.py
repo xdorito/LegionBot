@@ -5,7 +5,7 @@ import config
 from discord.ext import tasks
 
 
-class BotTasks:
+class BotTasksManager:
     def __init__(self, bot):
         self.bot = bot
         self.state_manager = bot.state_manager

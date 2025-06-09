@@ -7,6 +7,7 @@ import os
 from datetime import datetime, timedelta
 
 import config
+from managers.roles_manager import BotRolesManager
 from models import candidate as candidate_model
 
 CANDIDATES_PICKLE = "candidates.p"
@@ -35,7 +36,7 @@ class ElectionCog(commands.Cog):
             print(f"Error saving {CANDIDATES_PICKLE}: {e}")
 
     @app_commands.command(name="candidate", description="Declare yourself as a candidate for Senate.")
-    @app_commands.checks.has_role(config.GUILD_MEMBER_ID)  # Using constant for member role
+    @BotRolesManager.require_role("MEMBER")
     async def candidate(self, interaction: discord.Interaction):
         # Check for ongoing election
         if not self.state_manager.get('ELECTION_STARTED'):
@@ -99,7 +100,7 @@ class ElectionCog(commands.Cog):
         """)
 
     @app_commands.command(name="start_election", description="Start an election!")
-    @app_commands.checks.has_role(config.ADMINISTRATOR_ROLE)  # Only administrators can start elections
+    @BotRolesManager.require_role("ADMINISTRATOR")# Only administrators can start elections
     async def start_election(self, interaction: discord.Interaction):
         """Starts a new Senate election, allowing candidates to declare."""
         if self.state_manager.get('ELECTION_STARTED'):
@@ -116,7 +117,7 @@ class ElectionCog(commands.Cog):
             "A new Legion Senate election has started! Candidates can now declare themselves.", ephemeral=False)
 
     @app_commands.command(name="start_voting", description="Stop candidate declarations and start voting.")
-    @app_commands.checks.has_role(config.ADMINISTRATOR_ROLE)
+    @BotRolesManager.require_role("ADMINISTRATOR")
     async def start_voting(self, interaction: discord.Interaction):
         if not self.state_manager.get('ELECTION_STARTED'):
             await interaction.response.send_message("No election is currently active to start voting.", ephemeral=True)
@@ -132,7 +133,7 @@ class ElectionCog(commands.Cog):
             "Candidate declarations have closed. Voting for the Senate election can now begin!", ephemeral=False)
 
     @app_commands.command(name="withdraw", description="Withdraw yourself as a candidate")
-    @app_commands.checks.has_role(config.GUILD_MEMBER_ID)
+    @BotRolesManager.require_role("MEMBER")
     async def withdraw(self, interaction: discord.Interaction):
         original_candidate_count = len(self.candidates)
         self.candidates = [c for c in self.candidates if c.uid != interaction.member.id]
@@ -145,7 +146,7 @@ class ElectionCog(commands.Cog):
             await interaction.response.send_message("You were not found in the list of candidates.", ephemeral=True)
 
     @app_commands.command(name="vote", description="Vote for a candidate!")
-    @app_commands.checks.has_role(config.GUILD_MEMBER_ID)
+    @BotRolesManager.require_role("MEMBER")
     async def vote(self, interaction: discord.Interaction, candidate_id: int):  # Renamed 'cid' for clarity
         if self.state_manager.get('CANDIDATES_ALLOWED'):
             await interaction.response.send_message(
@@ -168,7 +169,7 @@ class ElectionCog(commands.Cog):
                                                     ephemeral=True)
 
     @app_commands.command(name="remove_vote", description="Remove your vote for a candidate")
-    @app_commands.checks.has_role(config.GUILD_MEMBER_ID)
+    @BotRolesManager.require_role("MEMBER")
     async def remove_vote(self, interaction: discord.Interaction, candidate_id: int):
         if self.state_manager.get('CANDIDATES_ALLOWED'):
             await interaction.response.send_message("Voting has not started yet.", ephemeral=True)
@@ -187,7 +188,7 @@ class ElectionCog(commands.Cog):
                 return
 
     @app_commands.command(name="list_candidates", description="List all candidates for the election")
-    @app_commands.checks.has_role(config.GUILD_MEMBER_ID)
+    @BotRolesManager.require_role("MEMBER")
     async def list_candidates(self, interaction: discord.Interaction):
         if not self.state_manager.get('ELECTION_STARTED'):
             await interaction.response.send_message(
@@ -205,7 +206,7 @@ class ElectionCog(commands.Cog):
         await interaction.response.send_message(output, ephemeral=True)
 
     @app_commands.command(name="end_election", description="End a senate election")
-    @app_commands.checks.has_role(config.ADMINISTRATOR_ROLE)
+    @BotRolesManager.require_role("ADMINISTRATOR")
     async def end_election(self, interaction: discord.Interaction, senator_count: int):
         if not self.state_manager.get('ELECTION_STARTED'):
             await interaction.response.send_message("No election is currently active to end.", ephemeral=True)

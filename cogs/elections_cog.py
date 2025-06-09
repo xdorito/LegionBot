@@ -7,44 +7,38 @@ import os
 from datetime import datetime, timedelta
 
 import config
-import utils
-from utils import load_state, save_state
-import candidate as candidate_model
+from models import candidate as candidate_model
 
 CANDIDATES_PICKLE = "candidates.p"
+
 
 class ElectionCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
         # Access shared state and candidate list from bot instance
-        self.state = load_state()
-
-
-        # candidate type
-
-        self.candidates = self._load_candidates()
+        self.state_manager = self.bot.state_manager
+        self.candidates = self.load_candidates()
 
     @staticmethod
-    def _load_candidates():
+    def load_candidates():
         try:
             candidates_list = pickle.load(open(CANDIDATES_PICKLE, "rb"))
             return candidates_list
         except FileNotFoundError:
             return []
 
-    def _save_candidates(self):
+    def save_candidates(self):
         try:
             pickle.dump(self.candidates, open(CANDIDATES_PICKLE, "wb"))
         except Exception as e:
             print(f"Error saving {CANDIDATES_PICKLE}: {e}")
 
-
     @app_commands.command(name="candidate", description="Declare yourself as a candidate for Senate.")
     @app_commands.checks.has_role(config.GUILD_MEMBER_ID)  # Using constant for member role
     async def candidate(self, interaction: discord.Interaction):
         # Check for ongoing election
-        if not self.state['ELECTION_STARTED']:
+        if not self.state_manager.get('ELECTION_STARTED'):
             await interaction.response.send_message(
                 "There's no election running right now. Please wait for an election to declare your candidacy.",
                 ephemeral=True)
@@ -78,7 +72,7 @@ class ElectionCog(commands.Cog):
             return
 
         # Check if new candidate declarations are allowed
-        if not self.state['CANDIDATES_ALLOWED']:
+        if not self.state_manager.get('CANDIDATES_ALLOWED'):
             await interaction.response.send_message(
                 "Sorry, the period to declare your candidacy has ended. You'll have to try again next election.",
                 ephemeral=True)
@@ -96,7 +90,7 @@ class ElectionCog(commands.Cog):
 
         new_candidate = candidate_model.Candidate(interaction.user.display_name, interaction.user.id, candidate_id)
         self.candidates.append(new_candidate)
-        self._save_candidates()  # Save changes to pickle
+        self.save_candidates()  # Save changes to pickle
 
         await interaction.response.send_message(f"""
         Thank you for submitting your candidacy for the Legion Senate!
@@ -108,17 +102,15 @@ class ElectionCog(commands.Cog):
     @app_commands.checks.has_role(config.ADMINISTRATOR_ROLE)  # Only administrators can start elections
     async def start_election(self, interaction: discord.Interaction):
         """Starts a new Senate election, allowing candidates to declare."""
-        if self.state['ELECTION_STARTED']:
+        if self.state_manager.get('ELECTION_STARTED'):
             await interaction.response.send_message("An election is already in progress!", ephemeral=True)
             return
 
-        self.state['ELECTION_STARTED'] = True
-        self.state['CANDIDATES_ALLOWED'] = True
-        self._save_state()
+        self.state_manager.update_state({'ELECTION_STARTED': True, 'CANDIDATES_ALLOWED': True})
 
         # Clear previous candidates and votes for a new election
         self.candidates = []
-        self._save_candidates()
+        self.save_candidates()
 
         await interaction.response.send_message(
             "A new Legion Senate election has started! Candidates can now declare themselves.", ephemeral=False)
@@ -126,15 +118,15 @@ class ElectionCog(commands.Cog):
     @app_commands.command(name="start_voting", description="Stop candidate declarations and start voting.")
     @app_commands.checks.has_role(config.ADMINISTRATOR_ROLE)
     async def start_voting(self, interaction: discord.Interaction):
-        if not self.state['ELECTION_STARTED']:
+        if not self.state_manager.get('ELECTION_STARTED'):
             await interaction.response.send_message("No election is currently active to start voting.", ephemeral=True)
             return
-        if not self.state['CANDIDATES_ALLOWED']:
+        if not self.state_manager.get('CANDIDATES_ALLOWED'):
             await interaction.response.send_message(
                 "Candidate declarations have already ended. Voting is likely already in progress.", ephemeral=True)
             return
-        self.state['CANDIDATES_ALLOWED'] = False
-        self._save_state()
+
+        self.state_manager.update_state({'CANDIDATES_ALLOWED': False})
 
         await interaction.response.send_message(
             "Candidate declarations have closed. Voting for the Senate election can now begin!", ephemeral=False)
@@ -146,7 +138,7 @@ class ElectionCog(commands.Cog):
         self.candidates = [c for c in self.candidates if c.uid != interaction.member.id]
 
         if len(self.candidates) < original_candidate_count:
-            self._save_candidates()
+            self.save_candidates()
             await interaction.response.send_message("You have successfully withdrawn yourself as a candidate.",
                                                     ephemeral=True)
         else:
@@ -155,11 +147,11 @@ class ElectionCog(commands.Cog):
     @app_commands.command(name="vote", description="Vote for a candidate!")
     @app_commands.checks.has_role(config.GUILD_MEMBER_ID)
     async def vote(self, interaction: discord.Interaction, candidate_id: int):  # Renamed 'cid' for clarity
-        if self.state['CANDIDATES_ALLOWED']:
+        if self.state_manager.get('CANDIDATES_ALLOWED'):
             await interaction.response.send_message(
                 "Voting has not started yet. Please wait for the voting phase to begin.", ephemeral=True)
             return
-        if not self.state['ELECTION_STARTED']:
+        if not self.state_manager.get('ELECTION_STARTED'):
             await interaction.response.send_message("No election is currently active.", ephemeral=True)
             return
 
@@ -167,9 +159,9 @@ class ElectionCog(commands.Cog):
 
         for c in self.candidates:
             if c.cid == candidate_id:
-                c.Vote(voter_id, c.cid)
+                c.vote(voter_id, c.cid)
                 await interaction.response.send_message(f"Thank you for voting for {c.name}", ephemeral=True)
-                self._save_candidates()
+                self.save_candidates()
                 return
         else:
             await interaction.response.send_message("Invalid Candidate ID. Please check the list of candidates.",
@@ -178,26 +170,26 @@ class ElectionCog(commands.Cog):
     @app_commands.command(name="remove_vote", description="Remove your vote for a candidate")
     @app_commands.checks.has_role(config.GUILD_MEMBER_ID)
     async def remove_vote(self, interaction: discord.Interaction, candidate_id: int):
-        if self.state['CANDIDATES_ALLOWED']:
+        if self.state_manager.get('CANDIDATES_ALLOWED'):
             await interaction.response.send_message("Voting has not started yet.", ephemeral=True)
             return
-        if not self.state['ELECTION_STARTED']:
+        if not self.state_manager.get('ELECTION_STARTED'):
             await interaction.response.send_message("No election is currently active.", ephemeral=True)
             return
 
         voter_id = interaction.user.id
         for c in self.candidates:
             if c.cid == candidate_id:
-                c.RemoveVote(voter_id)
+                c.remove_vote(voter_id)
                 await interaction.response.send_message(
                     f"You have successfully removed your vote for {c.name}.", ephemeral=True)
-                self._save_candidates()
+                self.save_candidates()
                 return
 
     @app_commands.command(name="list_candidates", description="List all candidates for the election")
     @app_commands.checks.has_role(config.GUILD_MEMBER_ID)
     async def list_candidates(self, interaction: discord.Interaction):
-        if not self.state['ELECTION_STARTED']:
+        if not self.state_manager.get('ELECTION_STARTED'):
             await interaction.response.send_message(
                 "No election is currently active, so there are no candidates to list.", ephemeral=True)
             return
@@ -215,13 +207,11 @@ class ElectionCog(commands.Cog):
     @app_commands.command(name="end_election", description="End a senate election")
     @app_commands.checks.has_role(config.ADMINISTRATOR_ROLE)
     async def end_election(self, interaction: discord.Interaction, senator_count: int):
-        if not self.state['ELECTION_STARTED']:
+        if not self.state_manager.get('ELECTION_STARTED'):
             await interaction.response.send_message("No election is currently active to end.", ephemeral=True)
             return
 
-        self.state['ELECTION_STARTED'] = False
-        self.state['CANDIDATES_ALLOWED'] = False  # Ensure this is also false
-        utils.save_state(self.state)
+        self.state_manager.update_state({'ELECTION_STARTED': False, 'CANDIDATES_ALLOWED': False})
 
         # Sort candidates by votes in descending order
         sorted_candidates = sorted(self.candidates, key=lambda x: x.votes, reverse=True)

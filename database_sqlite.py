@@ -2,7 +2,8 @@ import database
 import sqlite3
 import asyncio
 import re
-import resource_requests
+from models import resource_requests
+
 
 class DatabaseSqlite(database.Database):
     db = None
@@ -456,7 +457,7 @@ class DatabaseSqlite(database.Database):
 
 def convertTuple(args):
     if args != None:
-        return resource_requests.resourceRequest(*args)
+        return resource_requests.ResourceRequest(*args)
     else:
         return None
 

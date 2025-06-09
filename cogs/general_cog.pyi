@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 import asyncio
-
 import config
 
 
@@ -73,6 +72,7 @@ class GeneralCog(commands.Cog):
                 await interaction.followup.send(output)
 
         return
+
 
 async def setup(bot):
     await bot.add_cog(GeneralCog(bot))

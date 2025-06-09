@@ -12,7 +12,6 @@ class RequestsCog(commands.Cog):
     async def request_list(self, interaction: discord.Interaction):
         await interaction.response.send_message("Fetching Requests...", ephemeral=True)
         output = "```"
-        # I love camel case too T-T
         name_padding = 0
         request_padding = 0
         claimant_padding = 0
@@ -32,7 +31,6 @@ class RequestsCog(commands.Cog):
             name_padding = max(name_padding, len(user_name))
             request_padding = max(request_padding, len(resource))
             claimant_padding = max(claimant_padding, len(claim_name))
-
 
         name_padding += 4
         request_padding += 4

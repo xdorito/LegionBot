@@ -6,11 +6,11 @@
         self.votes = 0
         self.voters = []
 
-    def Vote(self, uid: int):
+    def vote(self, uid: int):
         self.votes += 1
         self.voters.append(uid) if uid not in self.voters else None
 
-    def RemoveVote(self, uid: int):
+    def remove_vote(self, uid: int):
         if uid in self.voters:
             self.votes -= 1
             self.voters.remove(uid)

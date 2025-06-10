@@ -1,10 +1,13 @@
 from functools import wraps
+
+import discord
 from discord import Interaction, app_commands
 
-class BotRolesManager:
-    def __init__(self, config):
-        self.roles_config = config.ROLES
 
+class BotRolesManager:
+    def __init__(self, config, bot):
+        self.roles_config = config.ROLES
+        self.bot: discord.Client = bot
 
     def get_role_info(self, role_key: str):
         role_info = self.roles_config.get(role_key)
@@ -27,7 +30,6 @@ class BotRolesManager:
 
             for conf_name in configured_names_list:
                 if search_key_lower in str(conf_name).lower():
-                    # Found a match, return the role info
                     return info
 
         return None
@@ -43,6 +45,46 @@ class BotRolesManager:
         if role_info:
             return role_info.get("name") or role_info.get("names")
         return None
+
+    def get_guild_id(self):
+        return self.roles_config.get("GUILD").get("id")
+
+    def get_guild_object(self):
+        guild: discord.Guild = self.bot.get_guild(self.get_guild_id())
+        return guild
+
+    def get_guild_members(self):
+        guild = self.get_guild_object()
+        if guild:
+            return guild.members
+        return []
+
+    def get_role_by_id(self, role_id: int):
+        guild = self.get_guild_object()
+        if guild:
+            return guild.get_role(role_id)
+        return None
+
+    def get_role_by_name(self, role_name: str):
+        guild = self.get_guild_object()
+        role_id = self.get_role_id(role_name)
+        if guild:
+            for role in guild.roles:
+                if role.id == role_id or role_name.lower() in role.name.lower():
+                    return role
+        return None
+
+    def get_members_by_role(self, role_name: str, ignore_bots=True):
+        role = self.get_role_by_name(role_name)
+        if not role:
+            return []
+        if ignore_bots:
+            return [member for member in role.members if not member.bot]
+        return role.members
+
+    def get_verified_members(self):
+        """Get all members with the 'Legionnaire' role."""
+        return self.get_members_by_role("Legionnaire", ignore_bots=True)
 
     @staticmethod
     def require_role(role_name: str):

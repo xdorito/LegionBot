@@ -15,10 +15,12 @@ intents.message_content = True
 bot = commands.Bot(config.BOT_PREFIX, intents=intents)
 bot.config = config
 bot.state_manager = BotStateManager()
-bot.roles_manager = BotRolesManager(bot.config)
+bot.roles_manager = BotRolesManager(bot.config, bot)
 
 db = database_sqlite.DatabaseSqlite()
 db.setup_db()
+bot.db = db
+
 
 @bot.event
 async def on_ready():
@@ -26,14 +28,18 @@ async def on_ready():
 
     #  load cogs
     for file in os.listdir('./cogs'):
-        if file.endswith('.py') and not file.startswith('__'):
-            filename = f'cogs.{file[:-3]}'
+        if file.endswith('_cog.py'):
+            cog_name = f"cogs.{file[:-3]}"
             try:
-                await bot.load_extension(f'cogs.{filename}')
-                print(f"Loaded cog: {filename}")
+                await bot.load_extension(cog_name)
+                print(f"Loaded cog: {cog_name}")
             except Exception as e:
-                print(f"Failed to load cog {filename}: {e}")
-
+                print(f"Failed to load cog {cog_name}: {e}")
+    try:
+        await bot.tree.sync(guild=bot.roles_manager.get_guild_object())
+        print("Synced application commands.")
+    except Exception as e:
+        print(f"Failed to sync application commands: {e}")
     # Initialize bot tasks
     bot_tasks = BotTasksManager(bot)
     bot_tasks.ticket_remind.start()

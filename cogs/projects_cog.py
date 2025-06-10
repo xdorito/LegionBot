@@ -2,7 +2,7 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-import time # For time.time()
+import time
 
 
 class ProjectsCog(commands.Cog):

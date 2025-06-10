@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
-from discord import app_commands, InteractionType, InteractionResponse
-import config
+from discord import app_commands
+from typing import List
 from datetime import datetime
 
 from managers.roles_manager import BotRolesManager
@@ -33,23 +33,12 @@ class Admin(commands.Cog):
         output = f"Name: {interaction.guild.get_member(data[0]).display_name} - Join Date: <t:{int(data[1])}> - Member Date: <t:{int(data[2])}>"
         await interaction.response.send_message(output, ephemeral=True)
 
-    @app_commands.command(name="synccmd")
+    @commands.command(name="synccmd")
     @commands.has_permissions(administrator=True)
-    async def synccmd(self, interaction: discord.Interaction):
-        fmt = await self.bot.tree.sync(guild=interaction.guild_id)
-        await interaction.response.send_message(
-            f"Synced {len(fmt)} commands to the current server",
-            ephemeral=True
-        )
+    async def synccmd(self, ctx: discord.ext.commands.Context):
+        cmds: List[app_commands.AppCommand] = await self.bot.tree.sync(guild=ctx.guild)
+        await ctx.send(f"Synced {len(cmds)} commands to the current server", ephemeral=True)
 
-    @app_commands.command(name="globalsync")
-    @commands.has_permissions(administrator=True)
-    async def globalsync(self, interaction: discord.Interaction):
-        fmt = await self.bot.tree.sync()
-        await interaction.response.send_message(
-            f"Synced {len(fmt)} commands globally",
-            ephemeral=True
-        )
 
 
 async def setup(bot):

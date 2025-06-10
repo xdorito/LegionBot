@@ -1,20 +1,8 @@
 import discord
 import os
 from datetime import time
-from zoneinfo import ZoneInfo
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
-load_dotenv()
-CURRENT_ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
-
-def get_token_from_secrets():
-    try:
-        with open('secrets', 'r') as sf:
-            return sf.readline().strip()
-    except FileNotFoundError:
-        return None
-
-DISCORD_TOKEN = os.getenv('BOT_TOKEN') or get_token_from_secrets()
 
 DEVELOPMENT = {
     "GUILD": {
@@ -99,7 +87,6 @@ DEVELOPMENT = {
 PRODUCTION = {
     "GUILD": {
         "id": 1267584422253694996,
-        "object": discord.Object(id=1267584422253694996, type=discord.Guild),
     },
     "MEMBER": {
         "id": 1268739778119995505,
@@ -178,14 +165,27 @@ PRODUCTION = {
 }
 
 # Time settings
-ANNOY_TIME = time(hour=0, minute=0, second=0, tzinfo=ZoneInfo("America/Chicago"))
-
+ANNOY_TIME = time(hour=12, minute=30)
 # Bot settings
 BOT_PREFIX = '$'
 
-if CURRENT_ENVIRONMENT == 'production':
-    ROLES = PRODUCTION
-else:
-    ROLES = DEVELOPMENT
 
-print(f"Loaded config for {CURRENT_ENVIRONMENT}")
+def get_token_from_secrets():
+    try:
+        with open('secrets', 'r') as sf:
+            return sf.readline().strip()
+    except FileNotFoundError:
+        return None
+
+
+env = os.getenv('ENVIRONMENT', 'development').lower()
+load_dotenv(f'.env.{env}')
+DISCORD_TOKEN = os.getenv('BOT_TOKEN') or get_token_from_secrets()
+if env == 'development':
+    ROLES = DEVELOPMENT
+else:
+    ROLES = PRODUCTION
+
+print(f"Configured: {env}")
+
+
